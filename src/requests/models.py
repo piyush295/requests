@@ -201,6 +201,18 @@ class RequestEncodingMixin:
         files = to_key_val_list(files or {})
 
         for field, val in fields:
+            # The urlencoded path accepts non-string keys (e.g. ``{1: "a"}``
+            # sends ``1=a``), but the multipart path downstream passes the
+            # key straight to ``RequestField(name=...)`` which calls
+            # ``.translate()`` on it and raises ``AttributeError`` for a
+            # non-string. Normalise the key here so both paths behave the
+            # same way: bytes keep their decoded form, everything else is
+            # coerced via ``str()`` just like the value is below.
+            if isinstance(field, bytes):
+                field = field.decode("utf-8")
+            elif not isinstance(field, str):
+                field = str(field)
+
             if isinstance(val, basestring) or not hasattr(val, "__iter__"):
                 val = [val]
             for v in val:
@@ -211,14 +223,22 @@ class RequestEncodingMixin:
 
                     new_fields.append(
                         (
-                            field.decode("utf-8")
-                            if isinstance(field, bytes)
-                            else field,
+                            field,
                             v.encode("utf-8") if isinstance(v, str) else v,
                         )
                     )
 
         for k, v in files:
+            # ``_encode_files`` passes ``k`` to ``RequestField(name=k, ...)``,
+            # which assumes a ``str``. Mirror the ``fields`` branch so a
+            # bytes or non-string file key doesn't crash with
+            # ``AttributeError: 'int' object has no attribute 'translate'``
+            # inside urllib3.
+            if isinstance(k, bytes):
+                k = k.decode("utf-8")
+            elif not isinstance(k, str):
+                k = str(k)
+
             # support for explicit filename
             ft = None
             fh = None

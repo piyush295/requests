@@ -1145,6 +1145,29 @@ class TestRequests:
         assert b'name="stuff"' in prep.body
         assert b"name=\"b'stuff'\"" not in prep.body
 
+    def test_multipart_non_string_field_names(self, httpbin):
+        """Regression for https://github.com/psf/requests/issues/7634.
+
+        Non-string keys in ``data`` already worked on the urlencoded path
+        (``{1: "a"}`` prepared to ``1=a``). Adding ``files`` switched the
+        request to multipart, which passed the key straight to
+        ``RequestField(name=k, ...)`` and crashed with
+        ``AttributeError: 'int' object has no attribute 'translate'``. A
+        non-string key in ``files`` had the same crash. Both paths should
+        now coerce the key to a string.
+        """
+        # Non-string key in data with files attached.
+        prep = requests.Request(
+            "POST", httpbin("post"), data={1: "a"}, files={"f": b"x"}
+        ).prepare()
+        assert b'name="1"' in prep.body
+        assert b'name="f"' in prep.body
+
+        # Non-string key in files.
+        prep = requests.Request(
+            "POST", httpbin("post"), files={1: b"x"}
+        ).prepare()
+        assert b'name="1"' in prep.body
     def test_unicode_method_name(self, httpbin):
         with open(__file__, "rb") as f:
             files = {"file": f}
